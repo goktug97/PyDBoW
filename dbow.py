@@ -38,6 +38,43 @@ def initialize_clusters(
 
     return clusters
 
+def list_of_n(n):
+    alist = list()
+    for i in range(n):
+        alist.append(list())
+    return alist
+
+def binary_kmeans(descriptors: List[orb_descriptor.ORB], k=3):
+    first_run = True
+    while True:
+        if first_run:
+            clusters = initialize_clusters(descriptors, k)
+        else:
+            for cidx in range(len(clusters)):
+                cluster_descriptors = []
+                for didx in groups[cidx]:
+                    cluster_descriptors.append(descriptors[didx])
+                clusters[cidx] = orb_descriptor.mean_value(cluster_descriptors)
+        current_association = []
+        groups = list_of_n(len(clusters))
+        for didx, descriptor in enumerate(descriptors):
+            min_dist = descriptor.distance(clusters[0])
+            best_cluster = 0
+            for cidx in range(1, len(clusters)):
+                distance = descriptor.distance(clusters[cidx])
+                if distance < min_dist:
+                    min_dist = distance
+                    best_cluster = cidx
+            groups[best_cluster].append(didx)
+            current_association.append(best_cluster)
+        if first_run:
+            first_run = False
+        else:
+            if last_association == current_association:
+                break
+        last_association = current_association
+    return groups
+
 cap = cv2.VideoCapture(0)
 
 for i in range(10):
@@ -63,4 +100,4 @@ for idx in range(len(des)):
 
 # print(binary_descriptors)
 # print(orb_descriptor.mean_value(binary_descriptors))
-print(initialize_clusters(binary_descriptors, 3))
+print(binary_kmeans(binary_descriptors, 3))
