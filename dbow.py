@@ -38,13 +38,14 @@ def initialize_clusters(
 
     return clusters
 
-def list_of_n(n):
-    alist = list()
+def reserve_groups(n: int) -> List[List[int]]:
+    alist: List[List[int]] = list()
     for i in range(n):
         alist.append(list())
     return alist
 
-def binary_kmeans(descriptors: List[orb_descriptor.ORB], k=3):
+def binary_kmeans(
+        descriptors: List[orb_descriptor.ORB], k=3) -> List[List[int]]:
     first_run = True
     while True:
         if first_run:
@@ -55,8 +56,8 @@ def binary_kmeans(descriptors: List[orb_descriptor.ORB], k=3):
                 for didx in groups[cidx]:
                     cluster_descriptors.append(descriptors[didx])
                 clusters[cidx] = orb_descriptor.mean_value(cluster_descriptors)
-        current_association = []
-        groups = list_of_n(len(clusters))
+        groups: List[List[int]] = reserve_groups(len(clusters))
+        current_association: List[int] = []
         for didx, descriptor in enumerate(descriptors):
             min_dist = descriptor.distance(clusters[0])
             best_cluster = 0
@@ -72,32 +73,29 @@ def binary_kmeans(descriptors: List[orb_descriptor.ORB], k=3):
         else:
             if last_association == current_association:
                 break
-        last_association = current_association
+        last_association: List[int] = current_association
     return groups
 
-cap = cv2.VideoCapture(0)
+if __name__ == '__main__':
+    n_clusters = 3
+    cap = cv2.VideoCapture(0)
 
-for i in range(10):
-    cap.read()
+    for i in range(20):
+        cap.read()
 
-# size = 128
-ret, frame = cap.read()
-# x, y, w, h = cv2.selectROI(frame)
-# xmin, ymin, xmax, ymax = x, y, x+w, y+h
-# patch = frame[ymin:ymax, xmin:xmax, :]
-# patch = cv2.resize(patch, (size, size))
+    ret, frame = cap.read()
+    orb = cv2.ORB_create()
+    kps, des = orb.detectAndCompute(frame, None)
+    binary_descriptors : List[orb_descriptor.ORB] = []
+    for idx in range(len(des)):
+        binary_descriptors.append(orb_descriptor.ORB(orb_descriptor.to_binary(des[idx])))
 
-orb = cv2.ORB_create()
+    if len(binary_descriptors) <= n_clusters:
+        groups = reserve_groups(len(binary_descriptors))
+        for i in range(len(binary_descriptors)):
+            groups[i].append(i)
+    else:
+        groups = binary_kmeans(binary_descriptors, n_clusters)
 
-# h, w = frame.shape[0:2]
-# mask = np.zeros((h, w), dtype=np.uint8)
-# mask[max(0, ymin):min(ymax, h), max(0, xmin):min(xmax, w)] = 255
-
-kps, des = orb.detectAndCompute(frame, None)
-binary_descriptors = []
-for idx in range(len(des)):
-    binary_descriptors.append(orb_descriptor.ORB(orb_descriptor.to_binary(des[idx])))
-
-# print(binary_descriptors)
-# print(orb_descriptor.mean_value(binary_descriptors))
-print(binary_kmeans(binary_descriptors, 3))
+    # for group in groups:
+    #     binary_kmeans(orb_descriptor.ORB(binary_descriptors)[group])

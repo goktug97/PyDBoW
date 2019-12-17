@@ -17,13 +17,12 @@ class ORB(np.ndarray):
 
 def mean_value(descriptors: List[ORB]) -> ORB:
     '''Calculate mean of list of ORB Descriptors.'''
-    if not len(descriptors): return
     N2 = len(descriptors) / 2
     counters = np.sum(descriptors, axis=0)
     mean = np.where(counters >= N2, 1, 0)
     return ORB(mean)
 
-def to_binary(cv_descriptor: np.ndarray):
+def to_binary(cv_descriptor: np.ndarray) -> np.ndarray:
     '''Convert OpenCV Unsigned char descriptor to binary descriptor.'''
     binary_desc = np.array(list(format(int.from_bytes(struct.pack('B' * 32,
         *cv_descriptor), 'big'), '0256b')), dtype=np.uint8)

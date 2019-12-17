@@ -5,7 +5,6 @@ import orb_descriptor
 import numpy as np
 
 class TestORB(unittest.TestCase):
-
     def test_mean(self):
         descriptors = [orb_descriptor.ORB([0, 1, 0, 0, 1]),
                        orb_descriptor.ORB([1, 1, 1, 1, 1]),
@@ -22,4 +21,4 @@ class TestORB(unittest.TestCase):
         self.assertEqual(desc1.distance(desc2), 3)
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=2)
