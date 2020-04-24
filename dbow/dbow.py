@@ -1,24 +1,25 @@
-from typing import List
+from typing import List, Tuple
 from collections import Counter
 import glob
 import os
 import random
+import pickle
 
 import cv2
 import numpy as np
 
-import orb_descriptor
+from .orb_descriptor import ORB, mean_value
 
 
 class Node():
-    def __init__(self, descriptors: List[orb_descriptor.ORB]):
+    def __init__(self, descriptors: List[ORB]):
         self.descriptors = np.array(descriptors)
         self.child_nodes: List['Node'] = []
         self.idx = None # Initialized only for the last layer
 
 
 class Word(Node):
-    def __init__(self, descriptors: List[orb_descriptor.ORB]):
+    def __init__(self, descriptors: List[ORB]):
         self.weight: float = 0.0
         super().__init__(descriptors)
 
@@ -32,25 +33,31 @@ class Word(Node):
         self.weight = np.log(n_images/len(self.descriptors))
 
 
+class BoW():
+    def __init__(self, data):
+        self.data = np.array(data)
+
+    def score(self, other):
+        return 1 - 1/2 * np.linalg.norm(
+            self.data/np.linalg.norm(self.data) -
+            other.data/np.linalg.norm(other.data))
+
+
 class Vocabulary():
-    def __init__(self, images_folder_path: str, n_clusters: int, depth: int):
-        images_path = glob.glob(os.path.join(images_folder_path, '*.png'))
-        images = []
-        for image_path in images_path:
-            images.append(cv2.imread(image_path))
+    def __init__(self, images, n_clusters: int, depth: int):
         orb = cv2.ORB_create()
         descriptors = []
         for image in images:
             kps, descs = orb.detectAndCompute(image, None)
             for desc in descs:
-                descriptors.append(orb_descriptor.ORB.from_cv_descriptor(desc))
+                descriptors.append(ORB.from_cv_descriptor(desc))
         descriptors = np.array(descriptors)
         self.root_node = Node(descriptors)
         words = initialize_tree(self.root_node, n_clusters, depth)
         self.words = [Word.from_node(node) for node in words]
         for word in self.words: word.update_weight(len(images))
 
-    def query_descriptor(self, descriptor: orb_descriptor.ORB) -> Word:
+    def query_descriptor(self, descriptor: ORB) -> Word:
         def _traverse_node(node, depth=0):
             min_distance = float('inf')
             if not node.child_nodes:
@@ -63,12 +70,9 @@ class Vocabulary():
             return _traverse_node(closest_node, depth+1)
         return _traverse_node(self.root_node)
 
-    def image_to_bow(self, image):
-        orb = cv2.ORB_create()
-        kps, descs = orb.detectAndCompute(image, None)
-        descs = [orb_descriptor.ORB.from_cv_descriptor(desc) for desc in descs]
+    def descs_to_bow(self, descriptors: List[ORB]) -> BoW:
         words = []
-        for desc in descs:
+        for desc in descriptors:
             words.append(self.query_descriptor(desc))
         c = Counter(words)
         n_words = len(c + Counter())
@@ -77,13 +81,68 @@ class Vocabulary():
             tf = c[word] / n_words
             tf_idf = tf * word.weight
             bow.append(tf_idf)
-        return np.array(bow)
+        return BoW(bow)
+
+    def image_to_bow(self, image) -> BoW:
+        orb = cv2.ORB_create()
+        kps, descs = orb.detectAndCompute(image, None)
+        descs = [ORB.from_cv_descriptor(desc) for desc in descs]
+        return self.descs_to_bow(descs)
+
+    def save(self, path):
+        with open(path, 'wb') as output:
+            pickle.dump(self.__dict__, output, -1)
+
+    @classmethod
+    def load(cls, path):
+        with open(path, 'rb') as vocabulary_file:
+            cls_dict = pickle.load(vocabulary_file)
+        vocabulary = cls.__new__(cls)
+        vocabulary.__dict__.update(cls_dict)
+        return vocabulary
+
+
+class Database():
+    def __init__(self, vocabulary: Vocabulary):
+        self.vocabulary = vocabulary
+        self.database: List[BoW] = []
+        self.descriptors: List[ORB] = []
+
+    def add(self, descriptors):
+        bow = self.vocabulary.descs_to_bow(descriptors)
+        self.descriptors.append(descriptors)
+        self.database.append(bow)
+
+    def query(self, descriptors):
+        query_bow = self.vocabulary.descs_to_bow(descriptors)
+        scores = []
+        for bow in self.database:
+            scores.append(query_bow.score(bow))
+        return scores
+
+    def __len__(self):
+        return len(self.database)
+
+    def __getitem__(self, idx):
+        return self.database[idx]
+
+    def save(self, path):
+        with open(path, 'wb') as output:
+            pickle.dump(self.__dict__, output, -1)
+
+    @classmethod
+    def load(cls, path):
+        with open(path, 'rb') as database_file:
+            cls_dict = pickle.load(database_file)
+        database = cls.__new__(cls)
+        database.__dict__.update(cls_dict)
+        return database
 
 
 def initialize_clusters(
-        descriptors : List[orb_descriptor.ORB],
+        descriptors : List[ORB],
         n_clusters: int
-        ) -> List[List[orb_descriptor.ORB]]:
+        ) -> List[List[ORB]]:
     random_idx = np.random.randint(0, len(descriptors))
     clusters = [descriptors[random_idx]]
     distances = []
@@ -119,7 +178,7 @@ def reserve_groups(n: int) -> List[List[int]]:
     return alist
 
 def binary_kmeans(
-        descriptors: List[orb_descriptor.ORB], k: int) -> List[List[int]]:
+        descriptors: List[ORB], k: int) -> List[List[int]]:
     first_run = True
     while True:
         if first_run:
@@ -129,7 +188,7 @@ def binary_kmeans(
                 cluster_descriptors = []
                 for didx in groups[cidx]:
                     cluster_descriptors.append(descriptors[didx])
-                clusters[cidx] = orb_descriptor.mean_value(cluster_descriptors)
+                clusters[cidx] = mean_value(cluster_descriptors)
         groups: List[List[int]] = reserve_groups(len(clusters))
         current_association: List[int] = []
         for didx, descriptor in enumerate(descriptors):
