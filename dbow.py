@@ -5,11 +5,13 @@ from typing import List
 import random
 import glob
 import os
+from collections import Counter
 
 class Node():
     def __init__(self, descriptors):
         self.descriptors = np.array(descriptors)
         self.child_nodes = []
+        self.idx = None # Initialized only for the last layer
 
 class Word(Node):
     def __init__(self, descriptors):
@@ -18,11 +20,12 @@ class Word(Node):
 
     @classmethod
     def from_node(cls, node):
-        return cls(node.descriptors)
+        word = cls(node.descriptors)
+        word.idx = node.idx
+        return word
 
     def update_weight(self, n_images):
         self.weight = np.log(n_images/len(self.descriptors))
-
 
 class Vocabulary():
     def __init__(self, images_path, n_clusters, depth):
@@ -41,6 +44,35 @@ class Vocabulary():
         words = initialize_tree(self.root_node, n_clusters, depth)
         self.words = [Word.from_node(node) for node in words]
         [word.update_weight(len(images)) for word in self.words]
+
+    def query_descriptor(self, descriptor):
+        def _traverse_node(node, depth=0):
+            min_distance = float('inf')
+            if not node.child_nodes:
+                return self.words[node.idx]
+            for child_node in node.child_nodes:
+                distance = descriptor.distance(child_node.descriptors[0])
+                if distance < min_distance:
+                    closest_node = child_node
+                    min_distance = distance
+            return _traverse_node(closest_node, depth+1)
+        return _traverse_node(self.root_node)
+
+    def image_to_bow(self, image):
+        orb = cv2.ORB_create()
+        kps, descs = orb.detectAndCompute(image, None)
+        descs = [orb_descriptor.ORB.from_cv_descriptor(desc) for desc in descs]
+        words = []
+        for desc in descs:
+            words.append(self.query_descriptor(desc))
+        c = Counter(words)
+        n_words = len(c + Counter())
+        bow = []
+        for word in self.words:
+            tf = c[word] / n_words
+            tf_idf = tf * word.weight
+            bow.append(tf_idf)
+        return np.array(bow)
 
 def initialize_clusters(
         descriptors : List[orb_descriptor.ORB],
@@ -112,11 +144,14 @@ def binary_kmeans(
         last_association: List[int] = current_association
     return groups
 
-
 def initialize_tree(root, n_clusters, tree_depth):
     words = []
+    idx = 0
     def _initialize_tree(node, depth=0):
+        nonlocal idx
         if depth == tree_depth:
+            node.idx = idx
+            idx += 1
             words.append(node)
             return
         if len(node.descriptors) <= n_clusters:
