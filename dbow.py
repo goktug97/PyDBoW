@@ -1,15 +1,51 @@
 import cv2
 import numpy as np
-from scipy import spatial
-import struct
 import orb_descriptor
 from typing import List
 import random
+import glob
+import os
+
+class Node():
+    def __init__(self, descriptors):
+        self.descriptors = np.array(descriptors)
+        self.child_nodes = []
+
+class Word(Node):
+    def __init__(self, descriptors):
+        self.weight = 0.0
+        super().__init__(descriptors)
+
+    @classmethod
+    def from_node(cls, node):
+        return cls(node.descriptors)
+
+    def update_weight(self, n_images):
+        self.weight = np.log(n_images/len(self.descriptors))
+
+
+class Vocabulary():
+    def __init__(self, images_path, n_clusters, depth):
+        images_path = glob.glob(os.path.join(images_path, '*.png'))
+        images = []
+        for image_path in images_path:
+            images.append(cv2.imread(image_path))
+        orb = cv2.ORB_create()
+        descriptors = []
+        for image in images:
+            kps, descs = orb.detectAndCompute(image, None)
+            for desc in descs:
+                descriptors.append(orb_descriptor.ORB.from_cv_descriptor(desc))
+        descriptors = np.array(descriptors)
+        self.root_node = Node(descriptors)
+        words = initialize_tree(self.root_node, n_clusters, depth)
+        self.words = [Word.from_node(node) for node in words]
+        [word.update_weight(len(images)) for word in self.words]
 
 def initialize_clusters(
         descriptors : List[orb_descriptor.ORB],
         n_clusters: int
-        ) -> List[orb_descriptor.ORB]:
+        ) -> List[List[orb_descriptor.ORB]]:
     random_idx = np.random.randint(0, len(descriptors))
     clusters = [descriptors[random_idx]]
     distances = []
@@ -45,7 +81,7 @@ def reserve_groups(n: int) -> List[List[int]]:
     return alist
 
 def binary_kmeans(
-        descriptors: List[orb_descriptor.ORB], k=3) -> List[List[int]]:
+        descriptors: List[orb_descriptor.ORB], k: int) -> List[List[int]]:
     first_run = True
     while True:
         if first_run:
@@ -76,26 +112,23 @@ def binary_kmeans(
         last_association: List[int] = current_association
     return groups
 
-if __name__ == '__main__':
-    n_clusters = 3
-    cap = cv2.VideoCapture(0)
 
-    for i in range(20):
-        cap.read()
-
-    ret, frame = cap.read()
-    orb = cv2.ORB_create()
-    kps, des = orb.detectAndCompute(frame, None)
-    binary_descriptors : List[orb_descriptor.ORB] = []
-    for idx in range(len(des)):
-        binary_descriptors.append(orb_descriptor.ORB(orb_descriptor.to_binary(des[idx])))
-
-    if len(binary_descriptors) <= n_clusters:
-        groups = reserve_groups(len(binary_descriptors))
-        for i in range(len(binary_descriptors)):
-            groups[i].append(i)
-    else:
-        groups = binary_kmeans(binary_descriptors, n_clusters)
-
-    # for group in groups:
-    #     binary_kmeans(orb_descriptor.ORB(binary_descriptors)[group])
+def initialize_tree(root, n_clusters, tree_depth):
+    words = []
+    def _initialize_tree(node, depth=0):
+        if depth == tree_depth:
+            words.append(node)
+            return
+        if len(node.descriptors) <= n_clusters:
+            for desc in node.descriptors:
+                child_node = Node([desc])
+                node.child_nodes.append(child_node)
+                _initialize_tree(child_node, depth+1)
+        else:
+            groups = binary_kmeans(node.descriptors, n_clusters)
+            for group in groups:
+                child_node = Node(node.descriptors[group])
+                node.child_nodes.append(child_node)
+                _initialize_tree(child_node, depth+1)
+    _initialize_tree(root)
+    return words
