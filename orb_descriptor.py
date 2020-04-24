@@ -1,6 +1,8 @@
-import numpy as np
 from typing import List
 import struct
+
+import numpy as np
+
 
 class ORB():
     def __init__(self, features):
@@ -25,6 +27,10 @@ class ORB():
 
     def logical_xor(self, other):
         return np.logical_xor(self.features, other.features) 
+
+    def __eq__(self, other):
+        return np.allclose(self.features, other.features)
+
 
 def mean_value(descriptors):
     '''Calculate mean of list of ORB Descriptors.'''

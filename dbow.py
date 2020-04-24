@@ -1,35 +1,40 @@
-import cv2
-import numpy as np
-import orb_descriptor
 from typing import List
-import random
+from collections import Counter
 import glob
 import os
-from collections import Counter
+import random
+
+import cv2
+import numpy as np
+
+import orb_descriptor
+
 
 class Node():
-    def __init__(self, descriptors):
+    def __init__(self, descriptors: List[orb_descriptor.ORB]):
         self.descriptors = np.array(descriptors)
-        self.child_nodes = []
+        self.child_nodes: List['Node'] = []
         self.idx = None # Initialized only for the last layer
 
+
 class Word(Node):
-    def __init__(self, descriptors):
-        self.weight = 0.0
+    def __init__(self, descriptors: List[orb_descriptor.ORB]):
+        self.weight: float = 0.0
         super().__init__(descriptors)
 
     @classmethod
-    def from_node(cls, node):
+    def from_node(cls, node: Node) -> 'Word':
         word = cls(node.descriptors)
         word.idx = node.idx
         return word
 
-    def update_weight(self, n_images):
+    def update_weight(self, n_images: int) -> None:
         self.weight = np.log(n_images/len(self.descriptors))
 
+
 class Vocabulary():
-    def __init__(self, images_path, n_clusters, depth):
-        images_path = glob.glob(os.path.join(images_path, '*.png'))
+    def __init__(self, images_folder_path: str, n_clusters: int, depth: int):
+        images_path = glob.glob(os.path.join(images_folder_path, '*.png'))
         images = []
         for image_path in images_path:
             images.append(cv2.imread(image_path))
@@ -43,9 +48,9 @@ class Vocabulary():
         self.root_node = Node(descriptors)
         words = initialize_tree(self.root_node, n_clusters, depth)
         self.words = [Word.from_node(node) for node in words]
-        [word.update_weight(len(images)) for word in self.words]
+        for word in self.words: word.update_weight(len(images))
 
-    def query_descriptor(self, descriptor):
+    def query_descriptor(self, descriptor: orb_descriptor.ORB) -> Word:
         def _traverse_node(node, depth=0):
             min_distance = float('inf')
             if not node.child_nodes:
@@ -73,6 +78,7 @@ class Vocabulary():
             tf_idf = tf * word.weight
             bow.append(tf_idf)
         return np.array(bow)
+
 
 def initialize_clusters(
         descriptors : List[orb_descriptor.ORB],
@@ -144,7 +150,7 @@ def binary_kmeans(
         last_association: List[int] = current_association
     return groups
 
-def initialize_tree(root, n_clusters, tree_depth):
+def initialize_tree(root: Node, n_clusters: int, tree_depth: int) -> List[Node]:
     words = []
     idx = 0
     def _initialize_tree(node, depth=0):
