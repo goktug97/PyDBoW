@@ -8,8 +8,8 @@ with open(os.path.join(directory, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(name='pydbow',
-      version='0.1.0',
-      description='Python Implementation of Bag of Binary Words',
+      version='0.1.1',
+      description='Python Implementation of Bags of Binary Words',
       author='Göktuğ Karakaşlı',
       author_email='karakasligk@gmail.com',
       license='MIT',

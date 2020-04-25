@@ -11,7 +11,7 @@ PyDBoW is a Python implementation of Bags of Binary Words algorithm.
 ## Installation
 
 ``` bash
-pip install dbow
+pip install pydbow
 ```
 
 ## Usage
