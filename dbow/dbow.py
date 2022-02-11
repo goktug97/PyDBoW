@@ -1,9 +1,8 @@
-from typing import List, Tuple
-from collections import Counter
 import glob
 import os
-import random
 import pickle
+from collections import Counter
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -11,11 +10,11 @@ import numpy as np
 from .orb_descriptor import ORB, mean_value
 
 
-class Node():
+class Node:
     def __init__(self, descriptors: List[ORB]):
         self.descriptors = np.array(descriptors)
-        self.child_nodes: List['Node'] = []
-        self.idx = None # Initialized only for the last layer
+        self.child_nodes: List["Node"] = []
+        self.idx = None  # Initialized only for the last layer
 
 
 class Word(Node):
@@ -24,26 +23,27 @@ class Word(Node):
         super().__init__(descriptors)
 
     @classmethod
-    def from_node(cls, node: Node) -> 'Word':
+    def from_node(cls, node: Node) -> "Word":
         word = cls(node.descriptors)
         word.idx = node.idx
         return word
 
     def update_weight(self, n_images: int) -> None:
-        self.weight = np.log(n_images/len(self.descriptors))
+        self.weight = np.log(n_images / len(self.descriptors))
 
 
-class BoW():
+class BoW:
     def __init__(self, data):
         self.data = np.array(data)
 
     def score(self, other):
-        return 1 - 1/2 * np.linalg.norm(
-            self.data/np.linalg.norm(self.data) -
-            other.data/np.linalg.norm(other.data))
+        return 1 - 1 / 2 * np.linalg.norm(
+            self.data / np.linalg.norm(self.data)
+            - other.data / np.linalg.norm(other.data)
+        )
 
 
-class Vocabulary():
+class Vocabulary:
     def __init__(self, images, n_clusters: int, depth: int):
         orb = cv2.ORB_create()
         descriptors = []
@@ -55,11 +55,12 @@ class Vocabulary():
         self.root_node = Node(descriptors)
         words = initialize_tree(self.root_node, n_clusters, depth)
         self.words = [Word.from_node(node) for node in words]
-        for word in self.words: word.update_weight(len(images))
+        for word in self.words:
+            word.update_weight(len(images))
 
     def query_descriptor(self, descriptor: ORB) -> Word:
         def _traverse_node(node, depth=0):
-            min_distance = float('inf')
+            min_distance = float("inf")
             if not node.child_nodes:
                 return self.words[node.idx]
             for child_node in node.child_nodes:
@@ -67,7 +68,8 @@ class Vocabulary():
                 if distance < min_distance:
                     closest_node = child_node
                     min_distance = distance
-            return _traverse_node(closest_node, depth+1)
+            return _traverse_node(closest_node, depth + 1)
+
         return _traverse_node(self.root_node)
 
     def descs_to_bow(self, descriptors: List[ORB]) -> BoW:
@@ -90,19 +92,19 @@ class Vocabulary():
         return self.descs_to_bow(descs)
 
     def save(self, path):
-        with open(path, 'wb') as output:
+        with open(path, "wb") as output:
             pickle.dump(self.__dict__, output, -1)
 
     @classmethod
     def load(cls, path):
-        with open(path, 'rb') as vocabulary_file:
+        with open(path, "rb") as vocabulary_file:
             cls_dict = pickle.load(vocabulary_file)
         vocabulary = cls.__new__(cls)
         vocabulary.__dict__.update(cls_dict)
         return vocabulary
 
 
-class Database():
+class Database:
     def __init__(self, vocabulary: Vocabulary):
         self.vocabulary = vocabulary
         self.database: List[BoW] = []
@@ -127,22 +129,19 @@ class Database():
         return self.database[idx]
 
     def save(self, path):
-        with open(path, 'wb') as output:
+        with open(path, "wb") as output:
             pickle.dump(self.__dict__, output, -1)
 
     @classmethod
     def load(cls, path):
-        with open(path, 'rb') as database_file:
+        with open(path, "rb") as database_file:
             cls_dict = pickle.load(database_file)
         database = cls.__new__(cls)
         database.__dict__.update(cls_dict)
         return database
 
 
-def initialize_clusters(
-        descriptors : List[ORB],
-        n_clusters: int
-        ) -> List[List[ORB]]:
+def initialize_clusters(descriptors: List[ORB], n_clusters: int) -> List[List[ORB]]:
     random_idx = np.random.randint(0, len(descriptors))
     clusters = [descriptors[random_idx]]
     distances = []
@@ -157,7 +156,7 @@ def initialize_clusters(
         dist_sum = np.sum(distances)
         cut_distance = 0.0
         while not cut_distance:
-            cut_distance = random.uniform(0, dist_sum)
+            cut_distance = np.random.uniform(0, dist_sum)
 
         cum_distance = np.cumsum(distances)
         comparison = cum_distance >= cut_distance
@@ -165,11 +164,13 @@ def initialize_clusters(
             idx = -1
         else:
             for idx, x in enumerate(comparison):
-                if x: break
+                if x:
+                    break
 
         clusters.append(descriptors[idx])
 
     return clusters
+
 
 def reserve_groups(n: int) -> List[List[int]]:
     alist: List[List[int]] = list()
@@ -177,8 +178,8 @@ def reserve_groups(n: int) -> List[List[int]]:
         alist.append(list())
     return alist
 
-def binary_kmeans(
-        descriptors: List[ORB], k: int) -> List[List[int]]:
+
+def binary_kmeans(descriptors: List[ORB], k: int) -> List[List[int]]:
     first_run = True
     while True:
         if first_run:
@@ -209,9 +210,11 @@ def binary_kmeans(
         last_association: List[int] = current_association
     return groups
 
+
 def initialize_tree(root: Node, n_clusters: int, tree_depth: int) -> List[Node]:
     words = []
     idx = 0
+
     def _initialize_tree(node, depth=0):
         nonlocal idx
         if depth == tree_depth:
@@ -223,12 +226,13 @@ def initialize_tree(root: Node, n_clusters: int, tree_depth: int) -> List[Node]:
             for desc in node.descriptors:
                 child_node = Node([desc])
                 node.child_nodes.append(child_node)
-                _initialize_tree(child_node, depth+1)
+                _initialize_tree(child_node, depth + 1)
         else:
             groups = binary_kmeans(node.descriptors, n_clusters)
             for group in groups:
                 child_node = Node(node.descriptors[group])
                 node.child_nodes.append(child_node)
-                _initialize_tree(child_node, depth+1)
+                _initialize_tree(child_node, depth + 1)
+
     _initialize_tree(root)
     return words
